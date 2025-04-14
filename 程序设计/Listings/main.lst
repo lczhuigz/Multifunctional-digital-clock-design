@@ -1,0 +1,674 @@
+C51 COMPILER V9.60.7.0   MAIN                                                              01/01/2025 20:09:50 PAGE 1   
+
+
+C51 COMPILER V9.60.7.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: C:\Users\lczhu\software\keil\Keil_v5\C51\BIN\C51.EXE main.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEX
+                    -TEND PRINT(.\Listings\main.lst) TABS(2) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          #include <REGX52.H>
+   2          #include "intrins.h"
+   3          
+   4          
+   5          //1602引脚配置
+   6          #define LCD_RS P2_6
+   7          #define LCD_RW P2_5
+   8          #define LCD_EN P2_7
+   9          #define LCD_DataPort P0
+  10          //1302引脚配置
+  11          #define DS1302_SCLK P3_6
+  12          #define DS1302_IO P3_4
+  13          #define DS1302_CE P3_5
+  14          //18B20引脚配置
+  15          #define OneWire_DQ P3_7
+  16          //1302寄存器写入地址/指令定义
+  17          #define DS1302_SECOND   0x80
+  18          #define DS1302_MINUTE   0x82
+  19          #define DS1302_HOUR     0x84
+  20          #define DS1302_DATE     0x86
+  21          #define DS1302_MONTH    0x88
+  22          #define DS1302_DAY      0x8A
+  23          #define DS1302_YEAR     0x8C
+  24          #define DS1302_WP     0x8E
+  25          //独立按键函数声明
+  26          unsigned char Key();
+  27          //延时函数声明
+  28          void Delay(unsigned int xms);
+  29          //T0定时器初始化函数声明
+  30          void Timer0Init(void);
+  31          //闹钟功能函数声明
+  32          void CheckAlarm();
+  33          //1302函数声明
+  34          void DS1302_Init(void);
+  35          void DS1302_WriteByte(unsigned char Command,Data);
+  36          unsigned char DS1302_ReadByte(unsigned char Command);
+  37          void DS1302_SetTime(void);
+  38          void DS1302_ReadTime(void);
+  39          //18B20函数声明
+  40          void DS18B20_ConvertT(void);
+  41          float DS18B20_ReadT(void);
+  42          void DS18B20_Init(void);
+  43          //单总线函数声明
+  44          unsigned char OneWire_Init(void);
+  45          void OneWire_SendBit(unsigned char Bit);
+  46          unsigned char OneWire_ReceiveBit(void);
+  47          void OneWire_SendByte(unsigned char Byte);
+  48          unsigned char OneWire_ReceiveByte(void);
+  49          //DS18B20指令
+  50          #define DS18B20_SKIP_ROM      0xCC
+  51          #define DS18B20_CONVERT_T     0x44
+  52          #define DS18B20_READ_SCRATCHPAD   0xBE
+  53          //时间数组，索引0~6分别为年、月、日、时、分、秒、星期，设置为有符号的便�
+             -�<0的判断
+C51 COMPILER V9.60.7.0   MAIN                                                              01/01/2025 20:09:50 PAGE 2   
+
+  54          char DS1302_Time[]={25,01,01,11,31,55,3};
+  55          //闹钟时间设置
+  56          char AlarmTime[] = {25,01,01,11,31,59,3}; //年、月、日、 时、分、秒
+  57          //标志全局变量
+  58          unsigned char KeyNum,MODE,TimeSetSelect,TimeSetFlashFlag,AlarmFlag,BuzzerState,BuzzerCount,StopwatchMode,S
+             -topwatchState;
+  59          unsigned int StopwatchTime = 0;
+  60          float T;//温度
+  61          #define Buzzer P1_5
+  62          //星期计算函数声明
+  63          unsigned char CalculateWeekday(int year, int month, int day);
+  64          //1602函数声明
+  65          void LCD_Init();
+  66          void LCD_ShowChar(unsigned char Line,unsigned char Column,char Char);
+  67          void LCD_ShowString(unsigned char Line,unsigned char Column,char *String);
+  68          void LCD_ShowNum(unsigned char Line,unsigned char Column,unsigned int Number,unsigned char Length);
+  69          int LCD_Pow(int X,int Y);
+  70          //时间函数声明
+  71          void TimeSet(char* TimeArray,unsigned char* SelectPtr);//时间设置功能
+  72          void TimeShow(void);//时间显示功能
+  73          //秒表功能函数声明
+  74          void ShowStopwatch();// 显示秒表计时值
+  75          void StopwatchControl();//秒表按键功能 
+  76          //温度显示函数声明
+  77          void Show_Temperature();
+  78          
+  79          
+  80          
+  81          void main()
+  82          {
+  83   1        LCD_Init();
+  84   1        DS1302_Init();
+  85   1        DS18B20_ConvertT(); 
+  86   1        DS18B20_Init(); 
+  87   1        Timer0Init();
+  88   1        LCD_ShowString(1,1,"  -  -  ");//静态字符初始化显示
+  89   1        LCD_ShowString(2,1,"  :  :  ");
+  90   1        DS1302_Time[6] = CalculateWeekday(DS1302_Time[0], DS1302_Time[1], DS1302_Time[2]);
+  91   1        DS1302_SetTime();
+  92   1        
+  93   1        while(1)
+  94   1        {
+  95   2          KeyNum=Key();//读取键码
+  96   2          if(KeyNum==1)//按键1按下
+  97   2          {
+  98   3            if(MODE==0){MODE=1;TimeSetSelect=0;}//功能切换
+  99   3            else if(MODE==1){MODE=0;DS1302_SetTime();}
+ 100   3            else if(MODE==3){MODE=0;}
+ 101   3          }
+ 102   2          if(KeyNum==5){
+ 103   3            if(MODE==0){
+ 104   4              MODE=2;
+ 105   4              LCD_Init(); // 切换到秒表模式时初始化LCD
+ 106   4              LCD_ShowString(1,1,"Stopwatch");
+ 107   4              StopwatchTime = 0; // 重置秒表时间
+ 108   4              StopwatchState = 0; // 重置秒表状态
+ 109   4            }
+ 110   3            else if(MODE==2){
+ 111   4              MODE=3;
+ 112   4              LCD_Init();
+ 113   4              LCD_ShowString(1,1,"  -  -  ");
+ 114   4              LCD_ShowString(2,1,"  :  :  ");
+C51 COMPILER V9.60.7.0   MAIN                                                              01/01/2025 20:09:50 PAGE 3   
+
+ 115   4            }
+ 116   3            else if(MODE == 3)
+ 117   3            {
+ 118   4              MODE=0;
+ 119   4              LCD_Init();
+ 120   4              LCD_ShowString(1,1,"  -  -  ");
+ 121   4              LCD_ShowString(2,1,"  :  :  ");
+ 122   4            }
+ 123   3            
+ 124   3          }
+ 125   2          switch(MODE)//根据不同的功能执行不同的函数
+ 126   2          {
+ 127   3            case 0:TimeShow();CheckAlarm();Show_Temperature();break;
+ 128   3            case 1:TimeSet(DS1302_Time,&TimeSetSelect);break;
+ 129   3            case 2:StopwatchControl();break;
+ 130   3            case 3:TimeSet(AlarmTime,&TimeSetSelect);LCD_ShowString(2, 10, "W:");LCD_ShowString(1, 10, "SETTING");b
+             -reak;
+ 131   3          }
+ 132   2          if (BuzzerState) {
+ 133   3                  BuzzerCount++;
+ 134   3                  if (BuzzerCount >= 50) { // 蜂鸣器鸣叫 5 秒（100ms * 10）
+ 135   4                      BuzzerState = 0;    // 关闭蜂鸣器
+ 136   4                      BuzzerCount = 0;
+ 137   4              Buzzer = 0;
+ 138   4                  }
+ 139   3                  Buzzer = !Buzzer;
+ 140   3            Delay(5);
+ 141   3            Buzzer = !Buzzer;
+ 142   3            Delay(5);
+ 143   3            Buzzer = !Buzzer;
+ 144   3            Delay(5);// 蜂鸣器状态取反
+ 145   3              } else {
+ 146   3                  Buzzer = 0; // 关闭蜂鸣器
+ 147   3              }
+ 148   2      }
+ 149   1      }
+ 150          
+ 151          void Show_Temperature(){
+ 152   1        DS18B20_ConvertT(); //转换温度
+ 153   1        T=DS18B20_ReadT();  //读取温度
+ 154   1        //Delay(500);
+ 155   1        if(T<0)       //如果温度小于0
+ 156   1        {
+ 157   2          LCD_ShowChar(1,10,'-'); //显示负号
+ 158   2          T=-T;     //将温度变为正数
+ 159   2        }
+ 160   1        else        //如果温度大于等于0
+ 161   1        {
+ 162   2          LCD_ShowChar(1,10,'+'); //显示正号
+ 163   2        }
+ 164   1        LCD_ShowNum(1,11,(unsigned int)T,2);    //显示温度整数部分
+ 165   1        LCD_ShowChar(1,13,'.');   //显示小数点
+ 166   1        LCD_ShowNum(1,14,(unsigned int)(T*100)%100,2);//显示温度小数部分
+ 167   1      }
+ 168          //秒表按键功能
+ 169          void StopwatchControl() { 
+ 170   1          // 按键2：开始/暂停秒表
+ 171   1          if (KeyNum == 6) {
+ 172   2              StopwatchState = !StopwatchState;
+ 173   2          }
+ 174   1          // 按键3：清零秒表
+ 175   1          if (KeyNum == 7) {
+C51 COMPILER V9.60.7.0   MAIN                                                              01/01/2025 20:09:50 PAGE 4   
+
+ 176   2              StopwatchTime = 0;
+ 177   2              StopwatchState = 0;
+ 178   2          }
+ 179   1          // 显示秒表计时值
+ 180   1          ShowStopwatch();
+ 181   1      }
+ 182          // 显示秒表计时值
+ 183          void ShowStopwatch() {
+ 184   1          unsigned int seconds = StopwatchTime / 1000; // 计算秒
+ 185   1          unsigned int milliseconds = StopwatchTime % 1000; // 计算毫秒
+ 186   1      
+ 187   1          LCD_ShowNum(2, 1, seconds / 60, 2); // 显示分钟
+ 188   1          LCD_ShowChar(2, 3, ':');           // 显示冒号
+ 189   1          LCD_ShowNum(2, 4, seconds % 60, 2); // 显示秒
+ 190   1          LCD_ShowChar(2, 6, '.');           // 显示小数点
+ 191   1          LCD_ShowNum(2, 7, milliseconds / 10, 2); // 显示毫秒（取前两位）
+ 192   1      }
+ 193          void TimeShow(void)//时间显示功能
+ 194          { 
+ 195   1        DS1302_ReadTime();//读取时间
+ 196   1        LCD_ShowNum(1,1,DS1302_Time[0],2);//显示年
+ 197   1        LCD_ShowNum(1,4,DS1302_Time[1],2);//显示月
+ 198   1        LCD_ShowNum(1,7,DS1302_Time[2],2);//显示日
+ 199   1        LCD_ShowNum(2,1,DS1302_Time[3],2);//显示时
+ 200   1        LCD_ShowNum(2,4,DS1302_Time[4],2);//显示分
+ 201   1        LCD_ShowNum(2,7,DS1302_Time[5],2);//显示秒
+ 202   1        LCD_ShowString(2, 10, "W:");          // 显示星期
+ 203   1        LCD_ShowNum(2, 12, DS1302_Time[6], 1); // 显示星期值
+ 204   1      }
+ 205          
+ 206          void TimeSet(char* TimeArray,unsigned char* SelectPtr)//时间设置功能
+ 207          {
+ 208   1        if(KeyNum==2)//按键2按下
+ 209   1        {
+ 210   2          (*SelectPtr)++;//设置选择位加1
+ 211   2          *SelectPtr%=7;//越界清零
+ 212   2        }
+ 213   1        if(KeyNum==3)//按键3按下
+ 214   1        {
+ 215   2          TimeArray[*SelectPtr]++;//时间设置位数值加1
+ 216   2           
+ 217   2          if(TimeArray[0]>99){TimeArray[0]=0;}//年越界判断
+ 218   2          if(TimeArray[1]>12){TimeArray[1]=1;}//月越界判断
+ 219   2      
+ 220   2          if( TimeArray[1]==1 || TimeArray[1]==3 || TimeArray[1]==5 || TimeArray[1]==7 || 
+ 221   2            TimeArray[1]==8 || TimeArray[1]==10 || TimeArray[1]==12)//日越界判断
+ 222   2          {
+ 223   3            if(TimeArray[2]>31){TimeArray[2]=1;}//大月
+ 224   3          }
+ 225   2          else if(TimeArray[1]==4 || TimeArray[1]==6 || TimeArray[1]==9 || TimeArray[1]==11)
+ 226   2          {
+ 227   3            if(TimeArray[2]>30){TimeArray[2]=1;}//小月
+ 228   3          }
+ 229   2          else if(TimeArray[1]==2)
+ 230   2          {
+ 231   3            if(TimeArray[0]%4==0)
+ 232   3            {
+ 233   4              if(TimeArray[2]>29){TimeArray[2]=1;}//闰年2月
+ 234   4            }
+ 235   3            else
+ 236   3            {
+ 237   4              if(TimeArray[2]>28){TimeArray[2]=1;}//平年2月
+C51 COMPILER V9.60.7.0   MAIN                                                              01/01/2025 20:09:50 PAGE 5   
+
+ 238   4            }
+ 239   3          }
+ 240   2          TimeArray[6] = CalculateWeekday(TimeArray[0], TimeArray[1], TimeArray[2]);//更新星期
+ 241   2          if(TimeArray[3]>23){TimeArray[3]=0;}//时越界判断
+ 242   2          if(TimeArray[4]>59){TimeArray[4]=0;}//分越界判断
+ 243   2          if(TimeArray[5]>59){TimeArray[5]=0;}//秒越界判断
+ 244   2          if(TimeArray[6]>6){TimeArray[6]=0;}//星期越界判断
+ 245   2      
+ 246   2        }
+ 247   1        if(KeyNum==4)//按键4按下
+ 248   1        {
+ 249   2          TimeArray[*SelectPtr]--;//时间设置位数值减1
+ 250   2          if(TimeArray[0]<0){TimeArray[0]=99;}//年越界判断
+ 251   2          if(TimeArray[1]<1){TimeArray[1]=12;}//月越界判断
+ 252   2          if( TimeArray[1]==1 || TimeArray[1]==3 || TimeArray[1]==5 || TimeArray[1]==7 || 
+ 253   2            TimeArray[1]==8 || TimeArray[1]==10 || TimeArray[1]==12)//日越界判断
+ 254   2          {
+ 255   3            if(TimeArray[2]<1){TimeArray[2]=31;}//大月
+ 256   3            if(TimeArray[2]>31){TimeArray[2]=1;}
+ 257   3          }
+ 258   2          else if(TimeArray[1]==4 || TimeArray[1]==6 || TimeArray[1]==9 || TimeArray[1]==11)
+ 259   2          {
+ 260   3            if(TimeArray[2]<1){TimeArray[2]=30;}//小月
+ 261   3            if(TimeArray[2]>30){TimeArray[2]=1;}
+ 262   3          }
+ 263   2          else if(TimeArray[1]==2)
+ 264   2          {
+ 265   3            if(TimeArray[0]%4==0)
+ 266   3            {
+ 267   4              if(TimeArray[2]<1){TimeArray[2]=29;}//闰年2月
+ 268   4              if(TimeArray[2]>29){TimeArray[2]=1;}
+ 269   4            }
+ 270   3            else
+ 271   3            {
+ 272   4              if(TimeArray[2]<1){TimeArray[2]=28;}//平年2月
+ 273   4              if(TimeArray[2]>28){TimeArray[2]=1;}
+ 274   4            }
+ 275   3          }
+ 276   2          if(TimeArray[3]<0){TimeArray[3]=23;}//时越界判断
+ 277   2          if(TimeArray[4]<0){TimeArray[4]=59;}//分越界判断
+ 278   2          if(TimeArray[5]<0){TimeArray[5]=59;}//秒越界判断
+ 279   2          if(TimeArray[6]<0){TimeArray[6]=6;}//星期越界判断
+ 280   2          TimeArray[6] = CalculateWeekday(TimeArray[0], TimeArray[1], TimeArray[2]);
+ 281   2        }
+ 282   1        //更新显示，根据TimeSetSelect和TimeSetFlashFlag判断可完成闪烁功能
+ 283   1        if(*SelectPtr==0 && TimeSetFlashFlag==1){LCD_ShowString(1,1,"  ");}
+ 284   1        else {LCD_ShowNum(1,1,TimeArray[0],2);}
+ 285   1        if(*SelectPtr==1 && TimeSetFlashFlag==1){LCD_ShowString(1,4,"  ");}
+ 286   1        else {LCD_ShowNum(1,4,TimeArray[1],2);}
+ 287   1        if(*SelectPtr==2 && TimeSetFlashFlag==1){LCD_ShowString(1,7,"  ");}
+ 288   1        else {LCD_ShowNum(1,7,TimeArray[2],2);}
+ 289   1        if(*SelectPtr==3 && TimeSetFlashFlag==1){LCD_ShowString(2,1,"  ");}
+ 290   1        else {LCD_ShowNum(2,1,TimeArray[3],2);}
+ 291   1        if(*SelectPtr==4 && TimeSetFlashFlag==1){LCD_ShowString(2,4,"  ");}
+ 292   1        else {LCD_ShowNum(2,4,TimeArray[4],2);}
+ 293   1        if(*SelectPtr==5 && TimeSetFlashFlag==1){LCD_ShowString(2,7,"  ");}
+ 294   1        else {LCD_ShowNum(2,7,TimeArray[5],2);}
+ 295   1        if(*SelectPtr==6 && TimeSetFlashFlag==1){LCD_ShowString(2,12,"  ");}
+ 296   1        else {LCD_ShowNum(2,12,TimeArray[6],1);}
+ 297   1      }
+ 298          
+ 299          void Timer0_Routine() interrupt 1
+C51 COMPILER V9.60.7.0   MAIN                                                              01/01/2025 20:09:50 PAGE 6   
+
+ 300          {
+ 301   1        static unsigned int T0Count;
+ 302   1        static unsigned char station_toggle;
+ 303   1        TL0 = 0x18;   //设置定时初值
+ 304   1        TH0 = 0xFC;   //设置定时初值
+ 305   1        T0Count++;
+ 306   1        if(T0Count>=100)//每100ms进入一次
+ 307   1        { 
+ 308   2          T0Count=0;
+ 309   2          station_toggle++;
+ 310   2          if (station_toggle>=4)
+ 311   2          {
+ 312   3            station_toggle = 0;
+ 313   3            TimeSetFlashFlag=!TimeSetFlashFlag;//闪烁标志位取反
+ 314   3          }
+ 315   2          if (StopwatchState) {
+ 316   3                  StopwatchTime += 100; // 增加 100ms
+ 317   3              }
+ 318   2        }
+ 319   1      }
+ 320          //LCD1602写命令
+ 321          void LCD_WriteCommand(unsigned char Command)
+ 322          {
+ 323   1        LCD_RS=0;
+ 324   1        LCD_RW=0;
+ 325   1        LCD_DataPort=Command;
+ 326   1        LCD_EN=1;
+ 327   1        Delay(1);
+ 328   1        LCD_EN=0;
+ 329   1        Delay(1);
+ 330   1      }
+ 331          //LCD1602写数据
+ 332          void LCD_WriteData(unsigned char Data)
+ 333          {
+ 334   1        LCD_RS=1;
+ 335   1        LCD_RW=0;
+ 336   1        LCD_DataPort=Data;
+ 337   1        LCD_EN=1;
+ 338   1        Delay(1);
+ 339   1        LCD_EN=0;
+ 340   1        Delay(1);
+ 341   1      }
+ 342          //LCD1602设置光标位置
+ 343          void LCD_SetCursor(unsigned char Line,unsigned char Column)
+ 344          {
+ 345   1        if(Line==1)
+ 346   1        {
+ 347   2          LCD_WriteCommand(0x80|(Column-1));
+ 348   2        }
+ 349   1        else if(Line==2)
+ 350   1        {
+ 351   2          LCD_WriteCommand(0x80|(Column-1+0x40));
+ 352   2        }
+ 353   1      }
+ 354          //LCD1602初始化函数
+ 355          void LCD_Init()
+ 356          {
+ 357   1        LCD_WriteCommand(0x38);//八位数据接口，两行显示，5*7点阵
+ 358   1        LCD_WriteCommand(0x0c);//显示开，光标关，闪烁关
+ 359   1        LCD_WriteCommand(0x06);//数据读写操作后，光标自动加一，画面不动
+ 360   1        LCD_WriteCommand(0x01);//光标复位，清屏
+ 361   1      }
+C51 COMPILER V9.60.7.0   MAIN                                                              01/01/2025 20:09:50 PAGE 7   
+
+ 362          //在LCD1602指定位置上显示一个字符
+ 363          void LCD_ShowChar(unsigned char Line,unsigned char Column,char Char)
+ 364          {
+ 365   1        LCD_SetCursor(Line,Column);
+ 366   1        LCD_WriteData(Char);
+ 367   1      }
+ 368          //在LCD1602指定位置开始显示所给字符串
+ 369          void LCD_ShowString(unsigned char Line,unsigned char Column,char *String)
+ 370          {
+ 371   1        unsigned char i;
+ 372   1        LCD_SetCursor(Line,Column);
+ 373   1        for(i=0;String[i]!='\0';i++)
+ 374   1        {
+ 375   2          LCD_WriteData(String[i]);
+ 376   2        }
+ 377   1      }
+ 378          // 在LCD1602指定位置开始显示所给数字
+ 379          void LCD_ShowNum(unsigned char Line,unsigned char Column,unsigned int Number,unsigned char Length)
+ 380          {
+ 381   1        unsigned char i;
+ 382   1        LCD_SetCursor(Line,Column);
+ 383   1        for(i=Length;i>0;i--)
+ 384   1        {
+ 385   2          LCD_WriteData(Number/LCD_Pow(10,i-1)%10+'0');
+ 386   2        }
+ 387   1      }
+ 388          //LCD1602乘方运算
+ 389          int LCD_Pow(int X,int Y)
+ 390          {
+ 391   1        unsigned char i;
+ 392   1        int Result=1;
+ 393   1        for(i=0;i<Y;i++)
+ 394   1        {
+ 395   2          Result*=X;
+ 396   2        }
+ 397   1        return Result;
+ 398   1      }
+ 399          //独立按键函数实现
+ 400          unsigned char Key()
+ 401          {
+ 402   1        unsigned char KeyNumber=0;
+ 403   1        if(P3_0==0){Delay(20);while(P3_0==0);Delay(20);KeyNumber=1;}
+ 404   1        if(P3_1==0){Delay(20);while(P3_1==0);Delay(20);KeyNumber=2;}
+ 405   1        if(P3_2==0){Delay(20);while(P3_2==0);Delay(20);KeyNumber=3;}
+ 406   1        if(P3_3==0){Delay(20);while(P3_3==0);Delay(20);KeyNumber=4;}
+ 407   1        if(P1_0==0){Delay(20);while(P1_0==0);Delay(20);KeyNumber=5;}
+ 408   1        if(P1_1==0){Delay(20);while(P1_1==0);Delay(20);KeyNumber=6;}
+ 409   1        if(P1_2==0){Delay(20);while(P1_2==0);Delay(20);KeyNumber=7;}
+ 410   1        if(P1_3==0){Delay(20);while(P1_3==0);Delay(20);KeyNumber=8;}
+ 411   1        return KeyNumber;
+ 412   1      }
+ 413          //延时函数实现
+ 414          void Delay(unsigned int xms)
+ 415          {
+ 416   1        unsigned char i, j;
+ 417   1        while(xms--)
+ 418   1        {
+ 419   2          i = 2;
+ 420   2          j = 239;
+ 421   2          do
+ 422   2          {
+ 423   3            while (--j);
+C51 COMPILER V9.60.7.0   MAIN                                                              01/01/2025 20:09:50 PAGE 8   
+
+ 424   3          } while (--i);
+ 425   2        }
+ 426   1      }
+ 427          //T0定时器初始化函数实现
+ 428          void Timer0Init(void)
+ 429          {
+ 430   1        TMOD &= 0xF0;   //设置定时器模式
+ 431   1        TMOD |= 0x01;   //设置定时器模式
+ 432   1        TL0 = 0x18;   //设置定时初值
+ 433   1        TH0 = 0xFC;   //设置定时初值
+ 434   1        TF0 = 0;    //清除TF0标志
+ 435   1        TR0 = 1;    //定时器0开始计时
+ 436   1        ET0=1;
+ 437   1        EA=1;
+ 438   1        PT0=0;
+ 439   1      }
+ 440          //DS1302初始化
+ 441          void DS1302_Init(void)
+ 442          {
+ 443   1        DS1302_CE=0;
+ 444   1        DS1302_SCLK=0;
+ 445   1      }
+ 446          //DS1302写一个字节
+ 447          void DS1302_WriteByte(unsigned char Command,Data)
+ 448          {
+ 449   1        unsigned char i;
+ 450   1        DS1302_CE=1;
+ 451   1        for(i=0;i<8;i++)
+ 452   1        {
+ 453   2          DS1302_IO=Command&(0x01<<i);
+ 454   2          DS1302_SCLK=1;
+ 455   2          DS1302_SCLK=0;
+ 456   2        }
+ 457   1        for(i=0;i<8;i++)
+ 458   1        {
+ 459   2          DS1302_IO=Data&(0x01<<i);
+ 460   2          DS1302_SCLK=1;
+ 461   2          DS1302_SCLK=0;
+ 462   2        }
+ 463   1        DS1302_CE=0;
+ 464   1      }
+ 465          //DS1302读一个字节
+ 466          unsigned char DS1302_ReadByte(unsigned char Command)
+ 467          {
+ 468   1        unsigned char i,Data=0x00;
+ 469   1        Command|=0x01;  //将指令转换为读指令
+ 470   1        DS1302_CE=1;
+ 471   1        for(i=0;i<8;i++)
+ 472   1        {
+ 473   2          DS1302_IO=Command&(0x01<<i);
+ 474   2          DS1302_SCLK=0;
+ 475   2          DS1302_SCLK=1;
+ 476   2        }
+ 477   1        for(i=0;i<8;i++)
+ 478   1        {
+ 479   2          DS1302_SCLK=1;
+ 480   2          DS1302_SCLK=0;
+ 481   2          if(DS1302_IO){Data|=(0x01<<i);}
+ 482   2        }
+ 483   1        DS1302_CE=0;
+ 484   1        DS1302_IO=0;  //读取后将IO设置为0，否则读出的数据会出错
+ 485   1        return Data;
+C51 COMPILER V9.60.7.0   MAIN                                                              01/01/2025 20:09:50 PAGE 9   
+
+ 486   1      }
+ 487          //DS1302设置时间  
+ 488          void DS1302_SetTime(void)
+ 489          {
+ 490   1        DS1302_WriteByte(DS1302_WP,0x00);
+ 491   1        DS1302_WriteByte(DS1302_YEAR,DS1302_Time[0]/10*16+DS1302_Time[0]%10);//十进制转BCD码后写入
+ 492   1        DS1302_WriteByte(DS1302_MONTH,DS1302_Time[1]/10*16+DS1302_Time[1]%10);
+ 493   1        DS1302_WriteByte(DS1302_DATE,DS1302_Time[2]/10*16+DS1302_Time[2]%10);
+ 494   1        DS1302_WriteByte(DS1302_HOUR,DS1302_Time[3]/10*16+DS1302_Time[3]%10);
+ 495   1        DS1302_WriteByte(DS1302_MINUTE,DS1302_Time[4]/10*16+DS1302_Time[4]%10);
+ 496   1        DS1302_WriteByte(DS1302_SECOND,DS1302_Time[5]/10*16+DS1302_Time[5]%10);
+ 497   1        DS1302_WriteByte(DS1302_DAY,DS1302_Time[6]/10*16+DS1302_Time[6]%10);
+ 498   1        DS1302_WriteByte(DS1302_WP,0x80);
+ 499   1      }
+ 500          //DS1302读取时间
+ 501          void DS1302_ReadTime(void)
+ 502          {
+ 503   1        unsigned char Temp;
+ 504   1        Temp=DS1302_ReadByte(DS1302_YEAR);
+ 505   1        DS1302_Time[0]=Temp/16*10+Temp%16;//BCD码转十进制后读取
+ 506   1        Temp=DS1302_ReadByte(DS1302_MONTH);
+ 507   1        DS1302_Time[1]=Temp/16*10+Temp%16;
+ 508   1        Temp=DS1302_ReadByte(DS1302_DATE);
+ 509   1        DS1302_Time[2]=Temp/16*10+Temp%16;
+ 510   1        Temp=DS1302_ReadByte(DS1302_HOUR);
+ 511   1        DS1302_Time[3]=Temp/16*10+Temp%16;
+ 512   1        Temp=DS1302_ReadByte(DS1302_MINUTE);
+ 513   1        DS1302_Time[4]=Temp/16*10+Temp%16;
+ 514   1        Temp=DS1302_ReadByte(DS1302_SECOND);
+ 515   1        DS1302_Time[5]=Temp/16*10+Temp%16;
+ 516   1        Temp=DS1302_ReadByte(DS1302_DAY);
+ 517   1        DS1302_Time[6]=Temp/16*10+Temp%16;
+ 518   1      }
+ 519          //闹钟功能函数实现
+ 520          void CheckAlarm() {
+ 521   1          if (DS1302_Time[0] == AlarmTime[0] && 
+ 522   1              DS1302_Time[1] == AlarmTime[1] && 
+ 523   1              DS1302_Time[2] == AlarmTime[2] &&
+ 524   1          DS1302_Time[3] == AlarmTime[3] &&
+ 525   1          DS1302_Time[4] == AlarmTime[4] &&
+ 526   1          DS1302_Time[5] == AlarmTime[5] &&
+ 527   1          DS1302_Time[6] == AlarmTime[6]) {
+ 528   2              AlarmFlag = 1; // 触发闹钟
+ 529   2          BuzzerState = 1;
+ 530   2          }else {
+ 531   2              AlarmFlag = 0; // 关闭闹钟
+ 532   2          }
+ 533   1      }
+ 534          //18B20函数实现
+ 535          void DS18B20_Init(void){
+ 536   1        DS18B20_ConvertT();   //上电先转换一次温度，防止第一次读数据错误
+ 537   1        Delay(1000);      //等待转换完成
+ 538   1      }
+ 539          //转换温度
+ 540          void DS18B20_ConvertT(void)
+ 541          {
+ 542   1        OneWire_Init();
+ 543   1        OneWire_SendByte(DS18B20_SKIP_ROM);
+ 544   1        OneWire_SendByte(DS18B20_CONVERT_T);
+ 545   1      }
+ 546          //读取温度
+ 547          float DS18B20_ReadT(void)
+C51 COMPILER V9.60.7.0   MAIN                                                              01/01/2025 20:09:50 PAGE 10  
+
+ 548          {
+ 549   1        unsigned char TLSB,TMSB;
+ 550   1        int Temp;
+ 551   1        float T;
+ 552   1        OneWire_Init();
+ 553   1        OneWire_SendByte(DS18B20_SKIP_ROM);
+ 554   1        OneWire_SendByte(DS18B20_READ_SCRATCHPAD);
+ 555   1        TLSB=OneWire_ReceiveByte();
+ 556   1        TMSB=OneWire_ReceiveByte();
+ 557   1        Temp=(TMSB<<8)|TLSB;
+ 558   1        T=Temp/16.0;
+ 559   1        return T;
+ 560   1      }
+ 561          //单总线函数实现
+ 562          unsigned char OneWire_Init(void)
+ 563          {
+ 564   1        unsigned char i;
+ 565   1        unsigned char AckBit;
+ 566   1        OneWire_DQ=1;
+ 567   1        OneWire_DQ=0;
+ 568   1        i = 247;while (--i);    //Delay 500us
+ 569   1        OneWire_DQ=1;
+ 570   1        i = 32;while (--i);     //Delay 70us
+ 571   1        AckBit=OneWire_DQ;
+ 572   1        i = 247;while (--i);    //Delay 500us
+ 573   1        return AckBit;
+ 574   1      }
+ 575          //单总线发送一位
+ 576          void OneWire_SendBit(unsigned char Bit)
+ 577          {
+ 578   1        unsigned char i;
+ 579   1        OneWire_DQ=0;
+ 580   1        i = 4;while (--i);      //Delay 10us
+ 581   1        OneWire_DQ=Bit;
+ 582   1        i = 24;while (--i);     //Delay 50us
+ 583   1        OneWire_DQ=1;
+ 584   1      }
+ 585          //单总线接收一位
+ 586          unsigned char OneWire_ReceiveBit(void)
+ 587          {
+ 588   1        unsigned char i;
+ 589   1        unsigned char Bit;
+ 590   1        OneWire_DQ=0;
+ 591   1        i = 2;while (--i);      //Delay 5us
+ 592   1        OneWire_DQ=1;
+ 593   1        i = 2;while (--i);      //Delay 5us
+ 594   1        Bit=OneWire_DQ;
+ 595   1        i = 24;while (--i);     //Delay 50us
+ 596   1        return Bit;
+ 597   1      }
+ 598          //单总线发送一个字节
+ 599          void OneWire_SendByte(unsigned char Byte)
+ 600          {
+ 601   1        unsigned char i;
+ 602   1        for(i=0;i<8;i++)
+ 603   1        {
+ 604   2          OneWire_SendBit(Byte&(0x01<<i));
+ 605   2        }
+ 606   1      }
+ 607          //单总线接收一个字节
+ 608          unsigned char OneWire_ReceiveByte(void)
+ 609          {
+C51 COMPILER V9.60.7.0   MAIN                                                              01/01/2025 20:09:50 PAGE 11  
+
+ 610   1        unsigned char i;
+ 611   1        unsigned char Byte=0x00;
+ 612   1        for(i=0;i<8;i++)
+ 613   1        {
+ 614   2          if(OneWire_ReceiveBit()){Byte|=(0x01<<i);}
+ 615   2        }
+ 616   1        return Byte;
+ 617   1      }
+ 618          //星期计算函数实现
+ 619          unsigned char CalculateWeekday(int year, int month, int day) {
+ 620   1        unsigned char weekday;
+ 621   1          if (month < 3) {
+ 622   2              month += 12;
+ 623   2              year--;
+ 624   2          }
+ 625   1          weekday = (day + 2 * month + 3 * (month + 1) / 5 + year + year / 4 - year / 100 + year / 400) % 7;
+ 626   1          return (weekday + 1);
+ 627   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   3595    ----
+   CONSTANT SIZE    =     42    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     32      33
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
