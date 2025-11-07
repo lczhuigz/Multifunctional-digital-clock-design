@@ -5,27 +5,27 @@
 
 ### 硬件框图
 
-![多功能数字钟硬件框图](./图片/硬件框图.png)
+![多功能数字钟硬件框图](./Pictures/Hardware%20Block%20Diagram.png)
 
-[多功能数字钟硬件框图drawio工程](./drawio/硬件框图.drawio "多功能数字钟硬件框图drawio工程")
+[多功能数字钟硬件框图drawio工程](./Drawio/Hardware%20Block%20Diagram.drawio "多功能数字钟硬件框图drawio工程")
 
 ### 电路原理图
 
-![多功能数字钟电路原理图](./图片/电路原理图.png)
+![多功能数字钟电路原理图](./Pictures/Circuit%20Design%20Picture.png)
 
-[多功能数字钟电路原理图pdf](./电路设计/Sheet1.pdf "多功能数字钟电路原理图pdf")
+[多功能数字钟电路原理图pdf](./Circuit%20Design/Multifunctional-Digital-Clock-Design.pdf "多功能数字钟电路原理图pdf")
 
 ### 软件功能框图
 
-![多功能数字钟软件功能框图](./图片/软件功能框图.png)
+![多功能数字钟软件功能框图](./Pictures/Software%20Function%20Picture.png)
 
-[多功能数字钟软件功能框图drawio工程](./drawio/软件功能框图.drawio "多功能数字钟软件功能框图drawio工程")
+[多功能数字钟软件功能框图drawio工程](./Drawio/Software%20Function%20Block%20Diagram.drawio "多功能数字钟软件功能框图drawio工程")
 
 ### 程序流程图
 
-![多功能数字钟程序流程图](./图片/程序流程图.png)
+![多功能数字钟程序流程图](./Pictures/Program%20Flow%20Picture.png)
 
-[多功能数字钟程序流程图drawio工程](./drawio/程序流程图.drawio "多功能数字钟程序流程图drawio工程")
+[多功能数字钟程序流程图drawio工程](./Drawio/Program%20Flow%20Block%20Diagram.drawio "多功能数字钟程序流程图drawio工程")
 
 ### 效果演示
 
